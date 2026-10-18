@@ -120,20 +120,29 @@ def remove_file_from_index(file_path):
 def process_and_store_file(file_path):
     print(f"[Embedder] Processing file: {file_path}")
     # Compute everything FIRST so a failure doesn't leave the file un-indexed.
-    # Every segment is processed: all text pages AND all image-only pages of a PDF.
+    # Every segment is processed: all text pages, audio transcripts, and visual assets.
     rows = []
     chunk_idx = 0  # running index, unique per file
     chunk_size, stride = 300, 150
+    
+    audio_extensions = ('.mp3', '.wav', '.m4a', '.flac', '.ogg')
+    is_audio = any(ext in file_path.lower() for ext in audio_extensions)
+
     try:
         for kind, payload, label in extractor.extract_segments(file_path):
             tag = f"[{label}] " if label else ""
             if kind == "text":
+                filename = os.path.basename(file_path)
                 for i in range(0, max(1, len(payload)), stride):
                     chunk = payload[i:i + chunk_size]
                     if not chunk.strip():
                         continue
-                    vec = get_text_embedding(chunk)
-                    rows.append((file_path, chunk_idx, (tag + chunk)[:200], vec.tobytes(), "text"))
+                    
+                    text_to_embed = f"{filename} {chunk}"
+                    vec = get_text_embedding(text_to_embed)
+                    
+                    prefix = "[Audio Transcript] " if is_audio else ""
+                    rows.append((file_path, chunk_idx, (prefix + tag + chunk)[:200], vec.tobytes(), "text"))
                     chunk_idx += 1
             elif kind == "image":
                 vec = get_image_embedding(payload)
