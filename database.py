@@ -23,7 +23,7 @@ def init_db():
             UNIQUE(file_path, chunk_index)
         )
     ''')
-    # Migrate older databases that lack the modality column
+    
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(file_index)")]
     if "modality" not in cols:
         conn.execute("ALTER TABLE file_index ADD COLUMN modality TEXT DEFAULT 'text'")
