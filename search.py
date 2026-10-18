@@ -31,8 +31,8 @@ def _best_per_file(rows, query_vec):
     return sorted(best.values(), key=lambda x: x["score"], reverse=True)
 
 
-def semantic_search(query_text, top_k=5):
-    print(f"[Search] Querying database for: '{query_text}'")
+def semantic_search(query_text, filter_type=None, top_k=5):
+    print(f"[Search] Querying database for: '{query_text}' (Filter: {filter_type or 'all'})")
 
     conn = database.get_db_connection()
     rows = conn.execute(
@@ -42,6 +42,24 @@ def semantic_search(query_text, top_k=5):
 
     if not rows:
         print("[Search] Database is empty. Index some files first.")
+        return []
+
+    # Apply type or modality filtering if requested
+    if filter_type == 'text':
+        # Text documents, code, etc. (excluding audio transcripts)
+        rows = [r for r in rows if r["modality"] == "text" and not r["content"].startswith("[Audio Transcript]")]
+    elif filter_type == 'audio':
+        # Audio transcripts stored as text with the audio tag prefix
+        rows = [r for r in rows if r["modality"] == "text" and r["content"].startswith("[Audio Transcript]")]
+    elif filter_type == 'image':
+        # Standalone images (excluding PDF rendered page visuals)
+        rows = [r for r in rows if r["modality"] == "image" and not r["file_path"].lower().endswith('.pdf')]
+    elif filter_type == 'pdf':
+        # All chunks belonging to PDF files (both text pages and visual slide renders)
+        rows = [r for r in rows if r["file_path"].lower().endswith('.pdf')]
+
+    if not rows:
+        print("[Search] No files match the specified filter criteria.")
         return []
 
     text_rows = [r for r in rows if r["modality"] == "text"]
@@ -62,10 +80,20 @@ def semantic_search(query_text, top_k=5):
 
     # Each modality has its own score scale, so judge relevance against its own
     # threshold, then rank everything by score / threshold (comparable across types).
+    
     for h in text_hits:
         h["relevance"] = h["score"] / config.TEXT_MIN_SCORE
+        
+        # HYBRID SEARCH: Massive boost if the query is physically in the file name
+        if query_text.lower() in h["file_path"].lower():
+            h["relevance"] += 2.0
+            
     for h in image_hits:
         h["relevance"] = h["score"] / config.IMAGE_MIN_SCORE
+        
+        # HYBRID SEARCH: Massive boost if the query is physically in the file name
+        if query_text.lower() in h["file_path"].lower():
+            h["relevance"] += 2.0
 
     combined = text_hits + image_hits
     strong = [h for h in combined if h["relevance"] >= 1.0]
@@ -88,7 +116,18 @@ if __name__ == "__main__":
     database.init_db()
     query = input("Enter natural language search query: ").strip()
     if query:
-        matches = semantic_search(query)
+        print("\nSelect Filter Option:")
+        print("1. All Files (Default)")
+        print("2. Text Documents Only")
+        print("3. Images Only")
+        print("4. Audio Transcripts Only")
+        print("5. PDFs Only")
+        choice = input("Enter option (1-5): ").strip()
+        
+        filter_map = {'2': 'text', '3': 'image', '4': 'audio', '5': 'pdf'}
+        selected_filter = filter_map.get(choice)
+        
+        matches = semantic_search(query, filter_type=selected_filter)
         print(f"\n--- Top {len(matches)} Semantic Matches ---")
         for i, m in enumerate(matches, 1):
             flag = " (weak)" if m.get("weak") else ""
