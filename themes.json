@@ -1,0 +1,38 @@
+{
+  "Dark": {
+    "BG": "#202020",
+    "SIDEBAR": "#181818",
+    "SURFACE": "#2b2b2b",
+    "SURFACE_ALT": "#333333",
+    "BORDER": "#383838",
+    "TEXT": "#ffffff",
+    "MUTED": "#a0a0a0",
+    "ACCENT": "#60cdff",
+    "ACCENT_HOVER": "#4ab8e6",
+    "ON_ACCENT": "#000000"
+  },
+  "Cyberpunk": {
+    "BG": "#0a0a0c",
+    "SIDEBAR": "#050505",
+    "SURFACE": "#141417",
+    "SURFACE_ALT": "#1f1f24",
+    "BORDER": "#ff007f",
+    "TEXT": "#ffffff",
+    "MUTED": "#00f0ff",
+    "ACCENT": "#7000ff",
+    "ACCENT_HOVER": "#9d4dff",
+    "ON_ACCENT": "#ffffff"
+  },
+  "Light": {
+    "BG": "#fafafa",
+    "SIDEBAR": "#f3f3f3",
+    "SURFACE": "#ffffff",
+    "SURFACE_ALT": "#f0f0f0",
+    "BORDER": "#e5e5e5",
+    "TEXT": "#1a1a1a",
+    "MUTED": "#6e6e6e",
+    "ACCENT": "#005fb8",
+    "ACCENT_HOVER": "#0052a3",
+    "ON_ACCENT": "#ffffff"
+  }
+}
