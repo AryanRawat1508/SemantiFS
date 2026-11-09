@@ -6,6 +6,7 @@ import threading
 import time
 from pathlib import Path
 from tkinter import filedialog, ttk
+from PIL import Image
 
 import customtkinter as ctk
 
@@ -177,9 +178,10 @@ class ExplorerCombo(ctk.CTkComboBox):
         super().__init__(master, values=values, height=30, corner_radius=4, border_width=1, fg_color=T.SURFACE, border_color=T.BORDER, text_color=T.TEXT, button_color=T.SURFACE_ALT, button_hover_color=T.BORDER, dropdown_fg_color=T.SURFACE, dropdown_hover_color=T.SURFACE_ALT, dropdown_text_color=T.TEXT, font=font(12), dropdown_font=font(12), state="readonly", **kw)
 
 class DataTable(ctk.CTkFrame):
-    def __init__(self, master, columns, on_open=None):
+    def __init__(self, master, columns, on_open=None,on_select=None):
         super().__init__(master, corner_radius=4, fg_color=T.SURFACE, border_width=1, border_color=T.BORDER)
         self.on_open = on_open
+        self.on_select = on_select
         self.hovered_item = None
         self.original_tags = []  # Track original tags to restore later
         
@@ -197,17 +199,32 @@ class DataTable(ctk.CTkFrame):
         bar.grid(row=0, column=1, sticky="ns", padx=(0, 1), pady=1)
         
         self.tree.bind("<Double-1>", self._double_click)
+        self.tree.bind("<<TreeviewSelect>>", self._single_click)
         self.tree.bind("<Motion>", self._on_hover)
         self.tree.bind("<Leave>", self._on_leave)
         
         self.restyle()
+
+    def _single_click(self, _event):
+        sel = self.tree.selection()
+        if sel and self.on_select: 
+            self.on_select(self.tree.item(sel[0], "values"))
 
     def set_rows(self, rows):
         self.tree.delete(*self.tree.get_children())
         self.hovered_item = None
         self.original_tags = []
         for i, row in enumerate(rows):
-            self.tree.insert("", "end", values=row, tags=("odd" if i % 2 else "even",))
+            fname = str(row[0]).lower()
+            type_tag = ""
+            if any(ext in fname for ext in [".png", ".jpg", ".jpeg", ".webp"]): type_tag = "type_img"
+            elif any(ext in fname for ext in [".mp3", ".wav", ".m4a", ".flac", ".ogg", ".mpeg"]): type_tag = "type_audio"
+            elif ".pdf" in fname: type_tag = "type_pdf"
+            elif any(ext in fname for ext in [".txt", ".md", ".py", ".json", ".csv", ".log"]): type_tag = "type_txt"
+
+            tags = ("odd" if i % 2 else "even",)
+            if type_tag: tags += (type_tag,)
+            self.tree.insert("", "end", values=row, tags=tags)
 
     def _double_click(self, _event):
         sel = self.tree.selection()
@@ -246,9 +263,9 @@ class DataTable(ctk.CTkFrame):
         style.theme_use("clam")
         
         # 1. Base style configuration
-        style.configure("Explorer.Treeview", background=T.SURFACE, fieldbackground=T.SURFACE, foreground=T.TEXT, rowheight=28, borderwidth=0, relief="flat", font=(T.FONT, 9))
-        style.configure("Explorer.Treeview.Heading", background=T.SURFACE_ALT, foreground=T.TEXT, relief="flat", borderwidth=0, padding=(8, 6), font=(T.FONT, 10, "bold"))
-        
+        style.configure("Explorer.Treeview", background=T.SURFACE, fieldbackground=T.SURFACE, foreground=T.TEXT, rowheight=34, borderwidth=0, relief="flat", font=(T.FONT, 12))
+        style.configure("Explorer.Treeview.Heading", background=T.SURFACE_ALT, foreground=T.TEXT, relief="flat", borderwidth=0, padding=(8, 6), font=(T.FONT, 13, "bold"))
+
         # 2. State mappings (Ensures the selection accent color still works)
         style.map("Explorer.Treeview.Heading", background=[("active", T.BORDER)])
         style.map("Explorer.Treeview", background=[("selected", T.ACCENT)], foreground=[("selected", T.ON_ACCENT)])
@@ -260,6 +277,14 @@ class DataTable(ctk.CTkFrame):
         
         # T.BORDER provides a distinct background color, T.TEXT keeps the font fully readable
         self.tree.tag_configure("hover", background=T.BORDER, foreground=T.TEXT)
+        self.tree.tag_configure("type_img", foreground="#E5A93D")    # Orange
+        self.tree.tag_configure("type_audio", foreground="#569CD6")  # Blue
+        self.tree.tag_configure("type_txt", foreground="#4CAF50")    # Green
+        self.tree.tag_configure("type_pdf", foreground="#F44336")    # Red
+
+
+
+
 def open_in_explorer(path: str):
     try:
         if sys.platform.startswith("win"): subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
@@ -287,26 +312,70 @@ class Page(ctk.CTkFrame):
 
         self.nav_bar = ctk.CTkFrame(self, height=45, corner_radius=0, fg_color=T.SURFACE)
         self.nav_bar.grid(row=0, column=0, sticky="ew")
-        self.nav_bar.grid_columnconfigure(2, weight=1)
-
-        self.btn_back = ExplorerButton(self.nav_bar, text="⬅", width=40)
-        self.btn_back.grid(row=0, column=0, padx=(10, 5), pady=10)
-        self.btn_up = ExplorerButton(self.nav_bar, text="⬆", width=40)
-        self.btn_up.grid(row=0, column=1, padx=5, pady=10)
+        self.nav_bar.grid_columnconfigure(0, weight=1) 
+        
         self.path_entry = ExplorerEntry(self.nav_bar, placeholder_text="/virtual/root/directory...")
-        self.path_entry.grid(row=0, column=2, padx=10, pady=10, sticky="ew")
+        self.path_entry.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
         self.path_entry.insert(0, str(self.backend.root))
-        self.btn_search_nav = ExplorerButton(self.nav_bar, text="🔍 Search", width=70)
-        self.btn_search_nav.grid(row=0, column=3, padx=(5, 10), pady=10)
-
+        
         self.toolbar = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
         self.toolbar.grid(row=1, column=0, sticky="ew", padx=10, pady=(10, 5))
 
         self.status = ctk.CTkLabel(self, text="", font=font(11), text_color=T.MUTED, anchor="w")
         self.status.grid(row=3, column=0, sticky="ew", padx=10, pady=(5, 10))
+        self.main_split = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_split.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 5))
+        self.main_split.grid_columnconfigure(0, weight=4) # Table side
+        self.main_split.grid_columnconfigure(1, weight=1) # Preview side
+        self.main_split.grid_rowconfigure(0, weight=1)
+        self.preview_frame = ctk.CTkFrame(self.main_split, corner_radius=6, fg_color=T.SURFACE, border_width=1, border_color=T.BORDER, width=280)
+        self.preview_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        self.preview_frame.grid_propagate(False)
+        
+        self.lbl_preview_icon = ctk.CTkLabel(self.preview_frame, text="🔍", font=font(50))
+        self.lbl_preview_icon.pack(pady=(20, 10))
+        
+        self.lbl_preview_name = ctk.CTkLabel(self.preview_frame, text="Select a file", font=font(13, "bold"), text_color=T.TEXT, wraplength=240)
+        self.lbl_preview_name.pack(pady=(0, 10), padx=10)
+        
+        self.txt_preview = ctk.CTkTextbox(self.preview_frame, font=font(12), fg_color="transparent", text_color=T.MUTED, wrap="word")
+        self.txt_preview.pack(fill="both", expand=True, padx=10, pady=10)
+        self.txt_preview.configure(state="disabled")
+
+        self.img_preview_lbl = ctk.CTkLabel(self.preview_frame, text="")
+
 
     def on_show(self): pass
     def set_status(self, text): self.status.configure(text=text)
+    def update_preview(self, values):
+        if not values: return
+        path = values[-1] 
+        ext = Path(path).suffix.lower()
+        self.lbl_preview_name.configure(text=Path(path).name)
+        
+        self.img_preview_lbl.pack_forget()
+        self.txt_preview.pack(fill="both", expand=True, padx=10, pady=10)
+        self.txt_preview.configure(state="normal")
+        self.txt_preview.delete("1.0", "end")
+        
+        if not os.path.exists(path):
+            self.txt_preview.insert("1.0", "File not found.")
+        elif ext in {".txt", ".md", ".py", ".json", ".csv", ".log"}:
+            self.lbl_preview_icon.configure(text="📄")
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                self.txt_preview.insert("1.0", f.read(1500))
+        elif ext in {".png", ".jpg", ".jpeg", ".webp"}:
+            self.lbl_preview_icon.configure(text="")
+            img = Image.open(path)
+            img.thumbnail((220, 220))
+            self.img_preview_lbl.configure(image=ctk.CTkImage(light_image=img, dark_image=img, size=img.size))
+            self.txt_preview.pack_forget()
+            self.img_preview_lbl.pack(pady=10)
+        elif ext in {".mp3", ".wav", ".mpeg"}:
+            self.lbl_preview_icon.configure(text="🎵")
+            self.txt_preview.insert("1.0", f"Audio Track\nSize: {Path(path).stat().st_size / (1024*1024):.2f} MB")
+        
+        self.txt_preview.configure(state="disabled")
 
 class AllFilesPage(Page):
     def __init__(self, master, app):
@@ -317,8 +386,8 @@ class AllFilesPage(Page):
         self.filter.bind("<KeyRelease>", lambda _e: self._apply_filter())
         ExplorerButton(self.toolbar, "Refresh", self.refresh, width=90).grid(row=0, column=1)
 
-        self.table = DataTable(self, [("Name", 300, True, "w"), ("Date Modified", 120, False, "w"), ("Size", 80, False, "e"), ("Path", 400, False, "w")], on_open=lambda v: open_in_explorer(v[3]))
-        self.table.grid(row=2, column=0, sticky="nsew", padx=10)
+        self.table = DataTable(self.main_split, [("Name", 300, True, "w"), ("Date Modified", 120, False, "w"), ("Size", 80, False, "e"), ("Path", 400, False, "w")], on_open=lambda v: open_in_explorer(v[3]), on_select=self.update_preview)
+        self.table.grid(row=0, column=0, sticky="nsew")
         self.app.tables.append(self.table)
         self._rows = []
 
@@ -345,8 +414,8 @@ class RecentFilesPage(Page):
     def __init__(self, master, app):
         super().__init__(master, app)
         ExplorerButton(self.toolbar, "Refresh Recents", self.refresh, width=120).pack(side="left")
-        self.table = DataTable(self, [("Name", 300, True, "w"), ("Date Modified", 120, False, "w"), ("Size", 80, False, "e"), ("Path", 400, False, "w")], on_open=lambda v: open_in_explorer(v[3]))
-        self.table.grid(row=2, column=0, sticky="nsew", padx=10)
+        self.table = DataTable(self.main_split, [("Name", 300, True, "w"), ("Date Modified", 120, False, "w"), ("Size", 80, False, "e"), ("Path", 400, False, "w")], on_open=lambda v: open_in_explorer(v[3]), on_select=self.update_preview)
+        self.table.grid(row=0, column=0, sticky="nsew")
         self.app.tables.append(self.table)
 
     def on_show(self): self.refresh()
@@ -357,8 +426,8 @@ class IndexedFilesPage(Page):
         super().__init__(master, app)
         ExplorerButton(self.toolbar, "Index File...", self.index_file, primary=True, width=110).pack(side="left")
         ExplorerButton(self.toolbar, "Refresh", self.refresh, width=90).pack(side="left", padx=(8, 0))
-        self.table = DataTable(self, [("Name", 300, True, "w"), ("Chunks", 100, False, "e"), ("Path", 480, False, "w")], on_open=lambda v: open_in_explorer(v[2]))
-        self.table.grid(row=2, column=0, sticky="nsew", padx=10)
+        self.table = DataTable(self.main_split, [("Name", 300, True, "w"), ("Chunks", 100, False, "e"), ("Path", 480, False, "w")], on_open=lambda v: open_in_explorer(v[2]), on_select=self.update_preview)
+        self.table.grid(row=0, column=0, sticky="nsew")
         self.app.tables.append(self.table)
 
     def on_show(self): self.refresh()
@@ -387,21 +456,146 @@ class IndexedFilesPage(Page):
 class SearchPage(Page):
     def __init__(self, master, app):
         super().__init__(master, app)
+        
         self.toolbar.grid_columnconfigure(0, weight=1)
-        self.query = ExplorerEntry(self.toolbar, placeholder_text="Enter natural language query to search semantics...")
-        self.query.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self.type_box = ExplorerCombo(self.toolbar, self.backend.get_types(), width=130)
+        self.toolbar.grid_columnconfigure(3, weight=1)
+        
+        # 1. Main Search Bar
+        self.query = ctk.CTkEntry(
+            self.toolbar, width=500, height=45, corner_radius=22, border_width=2,
+            fg_color=T.SURFACE, border_color=T.ACCENT, text_color=T.TEXT, 
+            placeholder_text_color=T.MUTED, 
+            placeholder_text="✨ Enter a natural language query...", font=font(14) 
+        )
+        self.query.grid(row=0, column=1, padx=(0, 10), pady=(15, 5))
+        self.query.bind("<Return>", lambda _e: self.run_search())
+
+        self.search_btn = ctk.CTkButton(
+            self.toolbar, text="🔍 Search", command=self.run_search, 
+            width=110, height=45, corner_radius=8,
+            fg_color=T.ACCENT, hover_color=T.ACCENT_HOVER, 
+            text_color=T.ON_ACCENT, font=font(14, "bold")
+        )
+        self.search_btn.grid(row=0, column=2, pady=(15, 5))
+
+        # 2. Controls Sub-Frame (Filters, Time, Size, Sort, Legend)
+        self.controls = ctk.CTkFrame(self.toolbar, fg_color="transparent")
+        self.controls.grid(row=1, column=1, columnspan=2, pady=(5, 15))
+
+        # File Type Filter
+        self.type_box = ctk.CTkComboBox(
+            self.controls, values=self.backend.get_types(), 
+            width=120, height=32, corner_radius=6, font=font(12), state="readonly"
+        )
         self.type_box.set(self.backend.get_types()[0])
-        self.type_box.grid(row=0, column=1, padx=(0, 8))
-        ExplorerButton(self.toolbar, "Search", self.run_search, primary=True, width=90).grid(row=0, column=2)
-        self.table = DataTable(self, [("Name", 300, True, "w"), ("Score", 100, False, "e"), ("Path", 480, False, "w")], on_open=lambda v: open_in_explorer(v[2]))
-        self.table.grid(row=2, column=0, sticky="nsew", padx=10)
+        self.type_box.pack(side="left", padx=4)
+
+        # Date/Time Filter
+        self.time_box = ctk.CTkComboBox(
+            self.controls, values=["Any Time", "Past 24 Hours", "Past Week", "Past Month", "Past Year"], 
+            width=120, height=32, corner_radius=6, font=font(12), state="readonly"
+        )
+        self.time_box.set("Any Time")
+        self.time_box.pack(side="left", padx=4)
+
+        # ✨ NEW: Size Filter ✨
+        self.size_box = ctk.CTkComboBox(
+            self.controls, values=["Any Size", "< 1 MB", "1 MB - 10 MB", "10 MB - 100 MB", "> 100 MB"], 
+            width=120, height=32, corner_radius=6, font=font(12), state="readonly"
+        )
+        self.size_box.set("Any Size")
+        self.size_box.pack(side="left", padx=4)
+
+        # Sort Dropdown
+        self.sort_box = ctk.CTkComboBox(
+            self.controls, values=["Relevance", "Newest First", "Oldest First", "Largest Size", "Smallest Size"], 
+            width=120, height=32, corner_radius=6, font=font(12), state="readonly"
+        )
+        self.sort_box.set("Relevance")
+        self.sort_box.pack(side="left", padx=4)
+
+        # Legend
+        self.legend = ctk.CTkFrame(self.controls, fg_color="transparent")
+        self.legend.pack(side="left", padx=(15, 0))
+        ctk.CTkLabel(self.legend, text="Legend:", font=font(12, "bold"), text_color=T.TEXT).pack(side="left", padx=(0, 4))
+        ctk.CTkLabel(self.legend, text="■ Img", font=font(12), text_color="#E5A93D").pack(side="left", padx=4)
+        ctk.CTkLabel(self.legend, text="■ Aud", font=font(12), text_color="#569CD6").pack(side="left", padx=4)
+        ctk.CTkLabel(self.legend, text="■ Txt", font=font(12), text_color="#4CAF50").pack(side="left", padx=4)
+        ctk.CTkLabel(self.legend, text="■ PDF", font=font(12), text_color="#F44336").pack(side="left", padx=4)
+
+        # 3. Table setup
+        self.table = DataTable(
+            self.main_split, 
+            [("Name", 300, True, "w"), ("Score", 80, False, "e"), ("Date", 100, False, "w"), ("Size", 80, False, "e"), ("Path", 350, False, "w")], 
+            on_open=lambda v: open_in_explorer(v[-1]), 
+            on_select=self.update_preview
+        )
+        self.table.grid(row=0, column=0, sticky="nsew")
         self.app.tables.append(self.table)
 
     def run_search(self):
-        q, t = self.query.get(), self.type_box.get()
-        if q.strip(): run_async(self.app, lambda: self.backend.search(q, t), lambda r: self.table.set_rows(r) if not isinstance(r, Exception) else None)
+        q = self.query.get()
+        t = self.type_box.get()
+        s = self.sort_box.get()
+        time_filter = self.time_box.get() 
+        size_filter = self.size_box.get() # Get the selected size filter
+        
+        if not q.strip(): return
+        self.set_status(f"Searching for '{q}'...")
 
+        def process_results(results):
+            if isinstance(results, Exception):
+                self.set_status(f"Error: {results}")
+                return
+            
+            current_time = time.time()
+            enhanced_results = []
+            mb = 1024 * 1024 # 1 Megabyte in bytes
+            
+            for display_name, score, path in results:
+                try:
+                    stat = os.stat(path)
+                    file_time = stat.st_mtime
+                    file_size = stat.st_size
+                    
+                    # Apply Date/Time Filter
+                    age_in_seconds = current_time - file_time
+                    if time_filter == "Past 24 Hours" and age_in_seconds > 86400: continue
+                    if time_filter == "Past Week" and age_in_seconds > 604800: continue
+                    if time_filter == "Past Month" and age_in_seconds > 2592000: continue
+                    if time_filter == "Past Year" and age_in_seconds > 31536000: continue
+                    
+                    # ✨ Apply Size Filter Logic ✨
+                    if size_filter == "< 1 MB" and file_size >= 1 * mb: continue
+                    if size_filter == "1 MB - 10 MB" and not (1 * mb <= file_size <= 10 * mb): continue
+                    if size_filter == "10 MB - 100 MB" and not (10 * mb <= file_size <= 100 * mb): continue
+                    if size_filter == "> 100 MB" and file_size <= 100 * mb: continue
+                    
+                    date_str = time.strftime('%m/%d/%Y', time.localtime(file_time))
+                    size_str = self.backend._format_size(file_size)
+                    enhanced_results.append({
+                        "name": display_name, "score": score, "date": date_str, "size": size_str, "path": path,
+                        "raw_time": file_time, "raw_size": file_size
+                    })
+                except Exception:
+                    # If file is missing/deleted, only show it if no strict filters are applied
+                    if time_filter == "Any Time" and size_filter == "Any Size":
+                        enhanced_results.append({
+                            "name": display_name, "score": score, "date": "--", "size": "--", "path": path,
+                            "raw_time": 0, "raw_size": 0
+                        })
+            
+            # Apply Sorting
+            if s == "Newest First": enhanced_results.sort(key=lambda x: x["raw_time"], reverse=True)
+            elif s == "Oldest First": enhanced_results.sort(key=lambda x: x["raw_time"])
+            elif s == "Largest Size": enhanced_results.sort(key=lambda x: x["raw_size"], reverse=True)
+            elif s == "Smallest Size": enhanced_results.sort(key=lambda x: x["raw_size"])
+            
+            final_rows = [(r["name"], r["score"], r["date"], r["size"], r["path"]) for r in enhanced_results]
+            self.table.set_rows(final_rows)
+            self.set_status(f"Found {len(final_rows)} semantic matches.")
+
+        run_async(self.app, lambda: self.backend.search(q, t), process_results)
 # =============================================================================
 # APP SHELL
 # =============================================================================
@@ -409,9 +603,9 @@ class App(ctk.CTk):
     def __init__(self, backend: FileBackend | None = None):
         super().__init__()
         self.title("SemantiFS Explorer")
-        self.geometry("1100x680")
-        self.minsize(850, 520)
-        
+        self.geometry("1300x720") 
+        self.minsize(1000, 600)
+
         self.backend = backend or FileBackend()
         
         # Load and apply initial theme
@@ -443,13 +637,13 @@ class App(ctk.CTk):
         self.sidebar.grid_propagate(False)
         self.sidebar.grid_rowconfigure(5, weight=1)
 
-        ctk.CTkLabel(self.sidebar, text="Quick Access", font=font(14, "bold"), text_color=T.TEXT, anchor="w").grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 10))
+        ctk.CTkLabel(self.sidebar, text="Quick Access", font=font(18, "bold"), text_color=T.TEXT, anchor="w").grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 10))
         ctk.CTkFrame(self.main_container, width=1, corner_radius=0, fg_color=T.BORDER).grid(row=0, column=0, sticky="nse")
-
         self.nav_buttons = {}
         
         def create_nav_btn(row, key, text):
-            btn = ctk.CTkButton(self.sidebar, text=text, anchor="w", height=36, corner_radius=4, fg_color="transparent", hover_color=T.SURFACE_ALT, text_color=T.TEXT, font=font(12), command=lambda k=key: self.show_page(k))
+            
+            btn = ctk.CTkButton(self.sidebar, text=text, anchor="w", height=36, corner_radius=4, fg_color="transparent", hover_color=T.SURFACE_ALT, text_color=T.TEXT, font=font(15), command=lambda k=key: self.show_page(k))
             btn.grid(row=row, column=0, sticky="ew", padx=10, pady=2)
             self.nav_buttons[key] = btn
 
@@ -484,12 +678,12 @@ class App(ctk.CTk):
         self.show_page(self.current_page)
 
     def show_page(self, key: str):
-        self.current_page = key
-        for k, btn in self.nav_buttons.items():
-            btn.configure(fg_color=T.SURFACE_ALT if k == key else "transparent", font=font(12, "bold" if k == key else "normal"))
-        page = self.pages[key]
-        page.tkraise()
-        page.on_show()
+       self.current_page = key
+       for k, btn in self.nav_buttons.items():
+           btn.configure(fg_color=T.SURFACE_ALT if k == key else "transparent", font=font(15, "bold" if k == key else "normal"))
+       page = self.pages[key]
+       page.tkraise()
+       page.on_show()
 
     def change_theme(self, selection):
         ThemeManager.apply(selection)
